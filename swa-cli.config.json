@@ -1,0 +1,14 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "chat-app": {
+      "appLocation": ".",
+      "apiLocation": "api",
+      "outputLocation": "out",
+      "appBuildCommand": "npm run build",
+      "apiBuildCommand": "pip install -r requirements.txt",
+      "run": "npm run dev",
+      "appDevserverUrl": "http://localhost:3000"
+    }
+  }
+} 

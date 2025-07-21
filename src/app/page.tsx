@@ -55,20 +55,25 @@ export default function Home() {
           buffer = buffer.slice(boundary + 2);
 
           if (eventString.startsWith('data: ')) {
-            const data = eventString.slice(6);
-            if (data === '[DONE]') {
+            const dataStr = eventString.slice(6);
+            if (dataStr === '[DONE]') {
               break; // finished
             }
 
-            setMessages((prev) => {
-              const updated = [...prev];
-              const lastIndex = updated.length - 1;
-              updated[lastIndex] = {
-                ...updated[lastIndex],
-                content: updated[lastIndex].content + data,
-              };
-              return updated;
-            });
+            try {
+              const data = JSON.parse(dataStr);
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastIndex = updated.length - 1;
+                updated[lastIndex] = {
+                  ...updated[lastIndex],
+                  content: updated[lastIndex].content + data,
+                };
+                return updated;
+              });
+            } catch(e) {
+                console.error("Failed to parse stream data:", dataStr, e);
+            }
           }
           boundary = buffer.indexOf('\n\n');
         }

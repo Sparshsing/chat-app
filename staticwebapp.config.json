@@ -1,8 +1,15 @@
 {
-  "app_location": ".",
-  "api_location": "api",
-  "output_location": "out",
-  "app_build_command": "npm run build",
-  "api_build_command": "npm run build:api",
-  "build_timeout_in_minutes": 15
+  "routes": [
+    {
+      "route": "/api/*",
+      "rewrite": "/api/*"
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/images/*.{png,jpg,gif}", "/css/*"]
+  },
+  "platform": {
+    "apiRuntime": "python:3.10"
+  }
 } 
