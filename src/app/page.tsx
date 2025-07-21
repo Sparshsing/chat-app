@@ -1,103 +1,160 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    const userMessage: Message = { role: 'user', content: input };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/llm-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: newMessages,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Insert a placeholder assistant message that we will stream into
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE events (delimited by \n\n)
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const eventString = buffer.slice(0, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+
+          if (eventString.startsWith('data: ')) {
+            const data = eventString.slice(6);
+            if (data === '[DONE]') {
+              break; // finished
+            }
+
+            setMessages((prev) => {
+              const updated = [...prev];
+              const lastIndex = updated.length - 1;
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                content: updated[lastIndex].content + data,
+              };
+              return updated;
+            });
+          }
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+    } catch (error) {
+      console.error('Error calling LLM API:', error);
+      const errorMessage: Message = { 
+        role: 'assistant', 
+        content: 'Sorry, there was an error processing your request.' 
+      };
+      setMessages([...newMessages, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+      <h1 className="text-2xl font-bold text-center mb-6">LLM Chat</h1>
+      
+      {/* Chat messages area */}
+      <div className="flex-1 overflow-y-auto mb-4 space-y-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-900">
+        {messages.length === 0 ? (
+          <div className="text-center text-gray-500 dark:text-gray-400">
+            Start a conversation by typing a message below.
+          </div>
+        ) : (
+          messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${
+                message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              <div
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  message.role === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white dark:bg-gray-800 border'
+                }`}
+              >
+                <div className="text-sm font-semibold mb-1">
+                  {message.role === 'user' ? 'You' : 'Assistant'}
+                </div>
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              </div>
+            </div>
+          ))
+        )}
+        
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border">
+              <div className="text-sm font-semibold mb-1">Assistant</div>
+              <div className="text-gray-500">Typing...</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input area */}
+      <div className="flex gap-2">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Type your message here..."
+          disabled={isLoading}
+          className="flex-1 p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
+          rows={3}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={isLoading || !input.trim()}
+          className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed self-end"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Send
+        </button>
+      </div>
     </div>
   );
 }
